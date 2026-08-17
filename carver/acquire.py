@@ -1,57 +1,204 @@
-"""
-Phase 4 - Task C: Drive acquisition backend (READ-ONLY).
+import os
+import platform
+import subprocess
+import threading
+from dataclasses import dataclass
 
-Owner:  <assign a teammate>   (same person as carver/gui/acquire_view.py)
-Tests:  tests/test_acquire.py   (currently RED -- make them pass)
 
---------------------------------------------------------------------------
-WHAT TO DO
---------------------------------------------------------------------------
-Implement two functions.
-
-1) list_drives() -> list
-   Return the machine's drives available for imaging. Each item should carry at
-   least a device path, a human name and a size in bytes (a small dataclass or a
-   dict is fine). On Windows you can enumerate physical disks and volumes with
-   WMI via PowerShell; on Linux read /sys/block. On an unsupported platform or
-   on any error, return an EMPTY LIST -- never raise.
-
-2) image_source(source, out_path, max_bytes=None, block=1<<20,
-                progress=None, cancel=None) -> int
-   Copy `source` READ-ONLY to `out_path` and return the number of bytes written.
-   `source` may be a device path (e.g. \\\\.\\PhysicalDrive1) OR a regular file
-   (handy for testing).
-     * open the source read-only; NEVER write to it;
-     * read in `block`-sized chunks until end-of-source or `max_bytes` reached;
-     * if `progress` is given, call progress(bytes_written, target_or_None);
-     * if `cancel` (a threading.Event) is set, stop early;
-     * opening a physical drive/volume usually needs Administrator (Windows) /
-       root (Linux) -- raise a clear error message, do not crash the app.
-
-You edit this file, carver/gui/acquire_view.py and tests/test_acquire.py.
-
---------------------------------------------------------------------------
-CONTRACT (checked by tests/test_acquire.py)
---------------------------------------------------------------------------
-  * list_drives() returns a list.
-  * image_source(src_file, out, max_bytes=N) writes exactly N bytes, equal to
-    the first N bytes of the source.
-"""
+@dataclass
+class DriveInfo:
+    device: str
+    name: str
+    size: int
+    kind: str = ""
+    removable: bool = False
 
 
 def list_drives() -> list:
     """Enumerate drives available for imaging.
 
-    TODO(Task C): implement. This stub returns an empty list.
+    Returns an empty list if the platform is unsupported or
+    enumeration fails.
     """
-    return []
+    try:
+        system = platform.system()
+
+        if system == "Windows":
+            return _list_windows_drives()
+
+        if system == "Linux":
+            return _list_linux_drives()
+
+        return []
+
+    except Exception:
+        return []
 
 
-def image_source(source, out_path, max_bytes=None, block=1 << 20,
-                 progress=None, cancel=None) -> int:
-    """Read-only copy ``source`` -> ``out_path``; return bytes written.
+def _list_windows_drives() -> list:
+    """List Windows physical disks using PowerShell."""
+    drives = []
 
-    TODO(Task C): implement. This stub does nothing and returns 0, so the
-    acceptance test fails.
-    """
-    return 0
+    try:
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            (
+                "Get-CimInstance Win32_DiskDrive | "
+                "Select-Object DeviceID,Model,Size,MediaType | "
+                "ConvertTo-Json -Compress"
+            ),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+
+        import json
+
+        data = json.loads(result.stdout)
+
+        if isinstance(data, dict):
+            data = [data]
+
+        for disk in data:
+            device = str(disk.get("DeviceID") or "")
+            name = str(disk.get("Model") or device)
+            size = int(disk.get("Size") or 0)
+
+            if device:
+                drives.append(
+                    DriveInfo(
+                        device=device,
+                        name=name,
+                        size=size,
+                        kind=str(disk.get("MediaType") or ""),
+                    )
+                )
+
+    except Exception:
+        return []
+
+    return drives
+
+
+def _list_linux_drives() -> list:
+    """List Linux block devices using /sys/block."""
+    drives = []
+
+    try:
+        base = "/sys/block"
+
+        for device_name in os.listdir(base):
+            device_path = os.path.join(base, device_name)
+            size_path = os.path.join(device_path, "size")
+
+            try:
+                with open(size_path, "r", encoding="utf-8") as f:
+                    sectors = int(f.read().strip())
+
+                size = sectors * 512
+                removable = False
+
+                removable_path = os.path.join(device_path, "removable")
+                if os.path.exists(removable_path):
+                    with open(removable_path, "r", encoding="utf-8") as f:
+                        removable = f.read().strip() == "1"
+
+                drives.append(
+                    DriveInfo(
+                        device=f"/dev/{device_name}",
+                        name=device_name,
+                        size=size,
+                        kind="block",
+                        removable=removable,
+                    )
+                )
+
+            except Exception:
+                continue
+
+    except Exception:
+        return []
+
+    return drives
+
+
+def image_source(
+    source,
+    out_path,
+    max_bytes=None,
+    block=1 << 20,
+    progress=None,
+    cancel=None,
+) -> int:
+    """Read-only copy source -> out_path; return bytes written."""
+
+    if block <= 0:
+        raise ValueError("block must be greater than zero")
+
+    if max_bytes is not None and max_bytes < 0:
+        raise ValueError("max_bytes must not be negative")
+
+    written = 0
+
+    try:
+        with open(source, "rb") as src:
+            target = None
+
+            try:
+                if max_bytes is not None:
+                    target = max_bytes
+                else:
+                    try:
+                        target = os.fstat(src.fileno()).st_size
+                    except OSError:
+                        target = None
+
+                with open(out_path, "wb") as dst:
+                    while True:
+                        if cancel is not None and cancel.is_set():
+                            break
+
+                        if max_bytes is not None:
+                            remaining = max_bytes - written
+
+                            if remaining <= 0:
+                                break
+
+                            chunk_size = min(block, remaining)
+                        else:
+                            chunk_size = block
+
+                        chunk = src.read(chunk_size)
+
+                        if not chunk:
+                            break
+
+                        dst.write(chunk)
+                        written += len(chunk)
+
+                        if progress is not None:
+                            progress(written, target)
+
+            except PermissionError as exc:
+                raise PermissionError(
+                    f"Unable to image source. "
+                    f"Administrator/root privileges may be required: {exc}"
+                ) from exc
+
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Unable to open source for read-only imaging: {source}. "
+            f"Administrator/root privileges may be required."
+        ) from exc
+
+    return written
