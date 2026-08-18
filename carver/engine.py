@@ -173,14 +173,19 @@ _CARVERS = {"jpg": _carve_jpg, "png": _carve_png, "pdf": _carve_pdf}
 # --------------------------------------------------------------------------
 # main scan
 # --------------------------------------------------------------------------
-def scan(image, formats: Optional[List[str]] = None) -> ScanResult:
+def scan(image, formats: Optional[List[str]] = None, progress=None) -> ScanResult:
     """Scan an open :class:`DiskImage` and return a :class:`ScanResult`.
 
     ``formats`` optionally restricts the search (subset of jpg/png/pdf/zip).
     DOCX/XLSX/PPTX are discovered via the ``zip`` scan, so keep ``zip`` enabled
     to recover Office documents.
+
+    ``progress`` is an optional callback ``progress(fmt, pos, total, found)``
+    called as the scan sweeps the image; a UI can use it to drive a progress bar
+    and a live count, and may raise from within it to cancel the scan.
     """
     buf = image.buf
+    total = len(buf)
     active = formats or ["jpg", "png", "pdf", "zip"]
     candidates: List[Candidate] = []
     zip_ranges: List[Tuple[int, int]] = []
@@ -194,6 +199,8 @@ def scan(image, formats: Optional[List[str]] = None) -> ScanResult:
         for pos in _find_all(buf, sig.header):
             if pos < skip_until:
                 continue
+            if progress:
+                progress("zip", pos, total, len(candidates))
             fmt, s, e, note = _carve_zip(buf, pos)
             candidates.append(Candidate(fmt, s, e, note))
             zip_ranges.append((s, e))
@@ -209,6 +216,8 @@ def scan(image, formats: Optional[List[str]] = None) -> ScanResult:
         for pos in _find_all(buf, sig.header):
             if _inside_archive(pos):
                 continue
+            if progress:
+                progress(key, pos, total, len(candidates))
             s, e, note = _CARVERS[key](buf, pos)
             candidates.append(Candidate(key, s, e, note))
 

@@ -10,7 +10,7 @@ to launch without a console window.
 
 import sys
 
-from carver.gui.app import launch
+from carver.gui import launch
 
 if __name__ == "__main__":
     sys.exit(launch(sys.argv[1:] or None))

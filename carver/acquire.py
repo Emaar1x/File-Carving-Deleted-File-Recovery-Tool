@@ -202,3 +202,24 @@ def image_source(
         ) from exc
 
     return written
+
+
+def read_benchmark(source, nbytes, block=1 << 20, progress=None, cancel=None):
+    """Read (and discard) up to ``nbytes`` from ``source`` to measure pure read
+    throughput, independent of the write path. Returns ``(bytes_read, seconds)``.
+    Used by the GUI's drive read-speed test."""
+    import time
+
+    read = 0
+    t0 = time.monotonic()
+    with open(source, "rb") as src:
+        while read < nbytes:
+            if cancel is not None and cancel.is_set():
+                break
+            chunk = src.read(min(block, nbytes - read))
+            if not chunk:
+                break
+            read += len(chunk)
+            if progress is not None:
+                progress(read, nbytes)
+    return read, max(time.monotonic() - t0, 1e-6)

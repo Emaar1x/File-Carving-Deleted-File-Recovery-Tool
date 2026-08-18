@@ -44,12 +44,17 @@ independent parallel tasks — see [`TASKS.md`](TASKS.md).
   colour-coded confidence table, and a **CSV** evidence log (one row per file).
 
 **Phase 4 — desktop GUI & live acquisition**
-- A **Tkinter GUI** (`python -m carver gui`) with three tabs: **Scan** (pick an
-  image, threaded scan, colour-coded results table), **Reports** (export carved
-  files + JSON/HTML/CSV), and **Acquire**.
+- A single-window **Tkinter GUI** (`python -m carver gui`): pick or acquire an
+  image, choose the signatures, scan on a background thread (live progress +
+  found counter + Cancel), and browse the results in a **sortable, colour-coded
+  table** (Recovered / Duplicates / Embedded / All) with a text filter. Select a
+  file to see its metadata and an **image thumbnail**, **hex dump**, or — for
+  ZIP/DOCX — the **archive's contents**; save it, open it, or copy its hash.
+  Export the run as **JSON / HTML / CSV**.
 - **Read-only drive acquisition** (`carver/acquire.py`) — image a live drive or
   volume to a `.dd` file so it can be carved (the source is only read, never
-  written; imaging a physical drive needs Administrator rights).
+  written; imaging a physical drive needs Administrator rights), with a
+  read-speed test.
 
 ## How signature carving works
 
@@ -113,9 +118,11 @@ Carved files are named `NNNN_<type>_<offset-hex>.<ext>` (e.g.
 python -m carver gui        # or:  python gui.py   (pythonw gui.py for no console)
 ```
 
-Three tabs: **Scan** (pick an image, run a threaded scan, browse the colour-coded
-results table), **Reports** (export the carved files and save JSON/HTML/CSV), and
-**Acquire** (image a live drive read-only to a `.dd` file, then scan it).
+A single window: choose a disk image (or **From drive…** to image a live drive
+read-only), pick the formats, and **Scan**. Results appear in a colour-coded,
+sortable table with a filter and Recovered / Duplicates / Embedded / All views;
+selecting a file shows its metadata plus a thumbnail, hex dump or archive
+listing. Save individual files, or export the whole run as **JSON / HTML / CSV**.
 
 ### Example output
 
@@ -155,11 +162,7 @@ carver/
   report_html.py    Phase 3 · HTML report
   report_csv.py     Phase 3 · CSV evidence log
   acquire.py        Phase 4 · read-only drive imaging backend
-  gui/
-    app.py          Phase 4 · GUI shell (main window + shared AppState)
-    scan_view.py    Phase 4 · Scan & Results tab
-    report_view.py  Phase 4 · Reports & Export tab
-    acquire_view.py Phase 4 · Drive Acquisition tab
+  gui.py            Phase 4 · desktop GUI (single window + acquire dialog)
   cli.py            the `python -m carver scan` / `gui` command line
   __main__.py       entry point
 make_test_image.py  builds a synthetic image with known ground truth

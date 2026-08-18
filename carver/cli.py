@@ -111,7 +111,7 @@ def cmd_scan(args):
 
 
 def cmd_gui(args):
-    from .gui.app import launch
+    from .gui import launch
     return launch([args.image] if args.image else None)
 
 

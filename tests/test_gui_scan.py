@@ -1,7 +1,6 @@
 """
-ACCEPTANCE TEST for Phase 4 - Task A (Scan & Results panel).
+GUI test: the results table is populated from a scan.
 
-RED until carver/gui/scan_view.py fills its results table.
 Needs a display; skips automatically where Tk cannot open (e.g. headless CI).
 Run:  python tests/test_gui_scan.py
 """
@@ -17,16 +16,14 @@ import tkinter as tk
 
 import make_test_image as mti
 from carver import DiskImage, scan
-from carver.gui.app import AppState
-from carver.gui.scan_view import ScanView
+from carver.gui import CarverGUI
 
 
-def _result():
+def _image():
     tmp = tempfile.mkdtemp()
     p = os.path.join(tmp, "img.dd")
     mti.build(p, size_mb=8, quiet=True)
-    with DiskImage(p) as img:
-        return scan(img)
+    return p
 
 
 def _root():
@@ -41,13 +38,19 @@ def _root():
 def test_results_table_has_one_row_per_recovered_file():
     root = _root()
     try:
-        app = AppState()
-        res = _result()
-        app.set_result(res)
-        view = ScanView(root, app)
-        view.refresh()
-        rows = view.tree.get_children()
-        assert len(rows) == len(res.recovered), (len(rows), len(res.recovered))
+        path = _image()
+        with DiskImage(path) as img:
+            result = scan(img)
+        gui = CarverGUI(root)
+        gui.image_path = path
+        gui.result = result
+        gui.view_var.set("Recovered")
+        gui._refresh_table()
+        assert len(gui.tree.get_children()) == len(result.recovered)
+        # the Duplicates view shows the duplicate JPEG
+        gui.view_var.set("Duplicates")
+        gui._refresh_table()
+        assert len(gui.tree.get_children()) == len(result.duplicates)
     finally:
         root.destroy()
 
