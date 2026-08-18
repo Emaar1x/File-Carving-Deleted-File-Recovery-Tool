@@ -30,27 +30,50 @@ CONTRACT (checked by tests/test_gui_report.py)
     this is the function your Save buttons should call.)
 """
 
-import tkinter as tk
-from tkinter import ttk
+"""
+Phase 4 - Task B: Reports & Export panel.
+"""
 
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import webbrowser
+
+# Phase 3 ka reporting code import kar rahe hain jaisa comments mein bataya gaya hai
+from carver.report import write_report 
 
 class ReportView(ttk.Frame):
     def __init__(self, parent, app):
         super().__init__(parent, padding=10)
         self.app = app
 
-        ttk.Label(self, text="Reports & Export  —  TODO (Task B)",
-                  font=("", 11, "bold")).pack(anchor="w")
-        ttk.Label(self, text="Add buttons to export the carved files and to save "
-                             "JSON / HTML / CSV reports for the current scan "
-                             "result. See the module docstring for the contract "
-                             "(save_report()).",
-                  foreground="#666", justify="left").pack(anchor="w", pady=(2, 8))
+        ttk.Label(self, text="Reports & Export", font=("", 11, "bold")).pack(anchor="w", pady=(0, 10))
+
+        # Buttons add kar rahe hain report save karne ke liye
+        ttk.Button(self, text="Save JSON Report", command=lambda: self.export_dialog("json")).pack(anchor="w", pady=2)
+        ttk.Button(self, text="Save HTML Report", command=lambda: self.export_dialog("html")).pack(anchor="w", pady=2)
+        ttk.Button(self, text="Save CSV Report", command=lambda: self.export_dialog("csv")).pack(anchor="w", pady=2)
+
+    def export_dialog(self, kind):
+        """Ask user for a path and save the selected report."""
+        if not self.app.result:
+            messagebox.showerror("Error", "No scan result available to export.")
+            return
+            
+        path = filedialog.asksaveasfilename(
+            defaultextension=f".{kind}",
+            filetypes=[(f"{kind.upper()} Files", f"*.{kind}"), ("All Files", "*.*")]
+        )
+        if path:
+            self.save_report(kind, path)
+            messagebox.showinfo("Success", f"Report saved successfully to:\n{path}")
+            
+            # Agar HTML save ki hai to browser mein open karne ki option
+            if kind == "html":
+                webbrowser.open(path)
 
     def save_report(self, kind, path):
-        """Write a `kind` report for self.app.result to `path`.
+        """Write a `kind` report for self.app.result to `path`."""
+        if self.app.result:
+            # write_report() function auto handle kar lega json/html/csv ko
+            write_report(self.app.result, kind, path)
 
-        TODO(Task B): implement, e.g. via carver.report.write_report. This stub
-        does nothing, so the acceptance test fails.
-        """
-        return
