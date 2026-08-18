@@ -21,9 +21,11 @@ Launch with:  python -m carver gui     (or:  python gui.py)
 """
 
 import base64
+import contextlib
 import io
 import os
 import queue
+import sys
 import threading
 import time
 import tkinter as tk
@@ -55,6 +57,30 @@ def _human(n) -> str:
             return f"{v:.0f} {unit}" if unit == "B" else f"{v:.1f} {unit}"
         v /= step
     return f"{v:.1f} PB"
+
+
+@contextlib.contextmanager
+def _quiet_stderr():
+    """Silence C-library (libjpeg) chatter written straight to file descriptor 2.
+
+    Carving a real disk turns up fragmented and false-positive JPEGs; decoding
+    them for a thumbnail makes libjpeg print 'Corrupt JPEG data' etc. directly to
+    the console, past Python. Temporarily redirect fd 2 to null while decoding.
+    """
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, ValueError, io.UnsupportedOperation, OSError):
+        yield                      # no real stderr (e.g. pythonw) -- nothing to do
+        return
+    saved = os.dup(fd)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, fd)
+        yield
+    finally:
+        os.dup2(saved, fd)
+        os.close(devnull)
+        os.close(saved)
 
 
 def _hexdump(data: bytes, length: int = 1024) -> str:
@@ -446,18 +472,23 @@ class CarverGUI(ttk.Frame):
             self.preview_img_label.configure(image=photo, text="")
         else:
             self.preview_img_label.configure(
-                text="(install Pillow for JPEG preview)", foreground="#888")
+                text="(no preview — image data is corrupt or incomplete)",
+                foreground="#888")
 
     def _make_photo(self, data, max_side=260):
+        # libjpeg writes decode warnings straight to the console for the
+        # imperfect JPEGs carving turns up; keep it quiet while we decode.
         try:
             from PIL import Image, ImageTk  # type: ignore
-            im = Image.open(io.BytesIO(data))
-            im.thumbnail((max_side, max_side))
-            return ImageTk.PhotoImage(im)
+            with _quiet_stderr():
+                im = Image.open(io.BytesIO(data))
+                im.thumbnail((max_side, max_side))
+                return ImageTk.PhotoImage(im)
         except Exception:
             pass
         try:
-            return tk.PhotoImage(data=base64.b64encode(data).decode("ascii"))
+            with _quiet_stderr():
+                return tk.PhotoImage(data=base64.b64encode(data).decode("ascii"))
         except Exception:
             return None
 
