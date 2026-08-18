@@ -15,10 +15,10 @@ straight from the raw bytes.
 | 1 | Read raw/E01 image, scan signatures (JPG/PNG/PDF/ZIP/DOCX), carve + report offset & size | ✅ done |
 | 2 | Validation & confidence, fragmentation handling, de-duplication, containment | ✅ done |
 | 3 | Reporting — console + JSON + HTML + CSV | ✅ done |
-| 4 | Desktop GUI + live drive acquisition | planned |
+| 4 | Desktop GUI + live drive acquisition | ✅ done |
 
-Phases 2 and 3 were built collaboratively as independent parallel tasks — see
-[`TASKS.md`](TASKS.md).
+**All four phases complete.** Phases 2–4 were built collaboratively as
+independent parallel tasks — see [`TASKS.md`](TASKS.md).
 
 ## Features
 
@@ -42,6 +42,14 @@ Phases 2 and 3 were built collaboratively as independent parallel tasks — see
 - A single canonical summary (`carver/report.py`) is rendered to three formats:
   a **JSON** report (machine-readable), a self-contained **HTML** report with a
   colour-coded confidence table, and a **CSV** evidence log (one row per file).
+
+**Phase 4 — desktop GUI & live acquisition**
+- A **Tkinter GUI** (`python -m carver gui`) with three tabs: **Scan** (pick an
+  image, threaded scan, colour-coded results table), **Reports** (export carved
+  files + JSON/HTML/CSV), and **Acquire**.
+- **Read-only drive acquisition** (`carver/acquire.py`) — image a live drive or
+  volume to a `.dd` file so it can be carved (the source is only read, never
+  written; imaging a physical drive needs Administrator rights).
 
 ## How signature carving works
 
@@ -99,6 +107,16 @@ python -m carver scan IMAGE [-o DIR] [--formats jpg,png,pdf,zip]
 Carved files are named `NNNN_<type>_<offset-hex>.<ext>` (e.g.
 `0003_pdf_120000.pdf`) so the filename records where the data was found.
 
+### Desktop GUI (Phase 4)
+
+```bash
+python -m carver gui        # or:  python gui.py   (pythonw gui.py for no console)
+```
+
+Three tabs: **Scan** (pick an image, run a threaded scan, browse the colour-coded
+results table), **Reports** (export the carved files and save JSON/HTML/CSV), and
+**Acquire** (image a live drive read-only to a `.dd` file, then scan it).
+
 ### Example output
 
 ```
@@ -136,9 +154,16 @@ carver/
   report_json.py    Phase 3 · JSON report
   report_html.py    Phase 3 · HTML report
   report_csv.py     Phase 3 · CSV evidence log
-  cli.py            the `python -m carver scan` command line
+  acquire.py        Phase 4 · read-only drive imaging backend
+  gui/
+    app.py          Phase 4 · GUI shell (main window + shared AppState)
+    scan_view.py    Phase 4 · Scan & Results tab
+    report_view.py  Phase 4 · Reports & Export tab
+    acquire_view.py Phase 4 · Drive Acquisition tab
+  cli.py            the `python -m carver scan` / `gui` command line
   __main__.py       entry point
 make_test_image.py  builds a synthetic image with known ground truth
+gui.py              convenience GUI launcher (python gui.py)
 tests/
   test_phase1.py        carving: exact offsets/sizes, DOCX classification
   test_validation.py    confidence levels
@@ -147,7 +172,10 @@ tests/
   test_report_json.py   JSON report
   test_report_html.py   HTML report
   test_report_csv.py    CSV evidence log
-TASKS.md            current-phase task assignments and contribution workflow
+  test_gui_scan.py      GUI Scan tab
+  test_gui_report.py    GUI Reports tab
+  test_acquire.py       read-only drive imaging
+TASKS.md            per-phase task assignments and contribution workflow
 ```
 
 ## Testing
@@ -156,8 +184,9 @@ TASKS.md            current-phase task assignments and contribution workflow
 python -m pytest -q      # or run each tests/test_*.py file directly
 ```
 
-The suite (13 tests) builds the synthetic image and checks that the five target
-files are carved at their exact offset and size, that clean files are rated
-`high` and a truncated file `low`, that a duplicate file is detected by hash and
-dropped, that a file embedded inside another is flagged as contained, and that
-the JSON, HTML and CSV reports are generated correctly.
+The suite (17 tests) builds the synthetic image and checks the full pipeline:
+files carved at their exact offset and size, clean files rated `high` and a
+truncated file `low`, a duplicate detected by hash and dropped, a file embedded
+inside another flagged as contained, the JSON/HTML/CSV reports generated
+correctly, the GUI tabs populated, and a read-only drive image copied exactly.
+(The two GUI tests need a display and skip automatically on a headless machine.)
